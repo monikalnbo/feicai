@@ -97,6 +97,7 @@ const WebhooksPage = lazy(() => import("@/pages/WebhooksPage"));
 const SystemPage = lazy(() => import("@/pages/SystemPage"));
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const SoulEditorPage = lazy(() => import("@/pages/SoulEditorPage"));
+const WorkspacePage = lazy(() => import("@/pages/WorkspacePage"));
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { useI18n } from "@/i18n";
@@ -175,6 +176,7 @@ const BUILTIN_ROUTES_CORE: Record<string, ComponentType> = {
   "/env": EnvPage,
   "/docs": DocsPage,
   "/soul": SoulEditorPage,
+  "/workspace": WorkspacePage,
 };
 
 // Route placeholder for /chat.  The persistent ChatPage host (rendered
@@ -216,6 +218,7 @@ const BUILTIN_NAV_REST: NavItem[] = [
   { path: "/profiles", labelKey: "profiles", label: "Profiles", icon: Users },
   { path: "/config", labelKey: "config", label: "Config", icon: Settings },
   { path: "/env", labelKey: "keys", label: "Keys", icon: KeyRound },
+  { path: "/workspace", label: "工作台", icon: Activity },
   { path: "/soul", label: "Soul", icon: Heart },
   { path: "/system", label: "System", icon: Wrench },
   {

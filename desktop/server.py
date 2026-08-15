@@ -158,6 +158,155 @@ async def _check_hermes_health() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# 可拓展 Widget 系统 — 工作台仪表盘
+# ---------------------------------------------------------------------------
+
+# Widget 注册表：name -> 配置
+WIDGET_REGISTRY: dict[str, dict] = {}
+
+
+def register_widget(name: str, label: str, description: str, icon: str,
+                    api_url: str = "", refresh_interval: int = 30):
+    """注册一个 widget 到工作台"""
+    WIDGET_REGISTRY[name] = {
+        "name": name,
+        "label": label,
+        "description": description,
+        "icon": icon,
+        "api_url": api_url,
+        "refresh_interval": refresh_interval,
+    }
+
+
+# ── 内置 Widget ──
+
+register_widget(
+    name="hermes-status",
+    label="Hermes 状态",
+    description="Hermes Agent 后端连接状态",
+    icon="activity",
+    refresh_interval=15,
+)
+
+register_widget(
+    name="system-info",
+    label="系统信息",
+    description="本地系统基本信息",
+    icon="monitor",
+    refresh_interval=60,
+)
+
+register_widget(
+    name="feicai-version",
+    label="肥财版本",
+    description="当前版本与更新状态",
+    icon="package",
+    refresh_interval=3600,
+)
+
+
+@app.get("/api/feicai/widgets")
+async def list_widgets():
+    """返回所有可用 widget 列表"""
+    return JSONResponse(content={
+        "widgets": list(WIDGET_REGISTRY.values()),
+    })
+
+
+@app.get("/api/feicai/widgets/{widget_name}/data")
+async def get_widget_data(widget_name: str):
+    """获取指定 widget 的实时数据"""
+    if widget_name not in WIDGET_REGISTRY:
+        return JSONResponse(content={"error": f"Widget '{widget_name}' not found"}, status_code=404)
+
+    widget = WIDGET_REGISTRY[widget_name]
+
+    if widget_name == "hermes-status":
+        return await _widget_hermes_status()
+    elif widget_name == "system-info":
+        return _widget_system_info()
+    elif widget_name == "feicai-version":
+        return await _widget_feicai_version()
+    else:
+        # 自定义外部 API widget
+        if widget.get("api_url"):
+            return await _widget_external_api(widget["api_url"])
+        return JSONResponse(content={"status": "unknown", "message": "No data source configured"})
+
+
+async def _widget_hermes_status():
+    """Hermes 状态数据"""
+    connected = await _check_hermes_health()
+    info = {}
+    if connected:
+        try:
+            r = await client.get("/api/status", timeout=3.0)
+            if r.status_code == 200:
+                info = r.json()
+        except Exception:
+            pass
+    return JSONResponse(content={
+        "status": "connected" if connected else "disconnected",
+        "label": "Hermes Agent",
+        "connected": connected,
+        "details": info,
+    })
+
+
+def _widget_system_info():
+    """系统信息数据"""
+    import platform
+    return JSONResponse(content={
+        "status": "ok",
+        "label": "系统信息",
+        "data": {
+            "platform": platform.system(),
+            "release": platform.release(),
+            "python": platform.python_version(),
+            "hostname": platform.node(),
+        }
+    })
+
+
+async def _widget_feicai_version():
+    """版本与更新数据"""
+    from desktop.update_checker import get_current_version, check_for_update
+    current = get_current_version()
+    update_info = await check_for_update()
+    return JSONResponse(content={
+        "status": "ok",
+        "label": "肥财版本",
+        "data": {
+            "current_version": current,
+            "latest_version": update_info.latest_version,
+            "has_update": update_info.has_update,
+            "release_url": update_info.release_url,
+        }
+    })
+
+
+async def _widget_external_api(api_url: str):
+    """调用外部 API 获取数据"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as ext_client:
+            resp = await ext_client.get(api_url)
+            data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"text": resp.text}
+        return JSONResponse(content={
+            "status": "ok",
+            "label": "外部 API",
+            "source": api_url,
+            "data": data,
+        })
+    except Exception as e:
+        return JSONResponse(content={
+            "status": "error",
+            "label": "外部 API",
+            "source": api_url,
+            "error": str(e),
+        })
+
+
+# ---------------------------------------------------------------------------
 # Hermes SOUL file API
 # ---------------------------------------------------------------------------
 
