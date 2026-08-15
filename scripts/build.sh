@@ -1,57 +1,63 @@
 #!/bin/bash
 # ─────────────────────────────────────────────
-# 肥财 FeiCai — 构建脚本
-# 用法：
-#   ./scripts/build.sh mac     → 构建 macOS .app
-#   ./scripts/build.sh win     → 构建 Windows .exe
-#   ./scripts/build.sh linux   → 构建 Linux 可执行文件
+# 肥财 FeiCai — build script
+# Usage:
+#   ./scripts/build.sh mac     → macOS .app
+#   ./scripts/build.sh win     → Windows .exe
+#   ./scripts/build.sh linux   → Linux executable
 # ─────────────────────────────────────────────
 
 set -e
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 
-echo "🐱 肥财 FeiCai — 构建"
+echo "肥财 FeiCai — Build"
 echo "────────────────────────"
 
-# 1. 确保前端已构建
-if [ ! -d "hermes-agent/hermes_cli/web_dist" ]; then
-  echo "📦 构建前端..."
+# 1. Ensure frontend is built
+if [ ! -d "web_dist" ]; then
+  echo "Building frontend..."
   cd hermes-agent/web
   npm install
   npm run build
   cd "$ROOT"
+  # Move web_dist to root
+  mv hermes-agent/hermes_cli/web_dist web_dist
 else
-  echo "✅ 前端已构建 (hermes-agent/hermes_cli/web_dist)"
+  echo "Frontend ready (web_dist)"
 fi
 
-# 2. 确保虚拟环境
+# 2. Ensure venv
 if [ ! -d "venv" ]; then
-  echo "🐍 创建虚拟环境..."
+  echo "Creating venv..."
   python3 -m venv venv
 fi
 
 source venv/bin/activate
 
-# 3. 安装依赖
+# 3. Install deps
 pip install -q -r requirements.txt pyinstaller
 
-# 4. 版本号
+# 4. Version
 VERSION=$(cat VERSION)
 
-# 5. 平台特定构建
+# 5. Platform-specific build
 case "${1:-mac}" in
   mac|macos|darwin)
-    echo "🍎 构建 macOS .app..."
-    echo "   版本: v${VERSION}"
+    echo "macOS .app..."
+    echo "  Version: v${VERSION}"
     echo ""
     pyinstaller \
       --onefile \
       --windowed \
-      --name "肥财" \
+      --name "FeiCai" \
       --add-data "VERSION:." \
-      --add-data "hermes-agent/hermes_cli/web_dist:web_dist" \
+      --add-data "web_dist:web_dist" \
+      --add-data "modules:modules" \
       --hidden-import "desktop.server" \
+      --hidden-import "desktop.logger" \
+      --hidden-import "desktop.loader" \
+      --hidden-import "desktop.downloader" \
       --hidden-import "desktop.update_checker" \
       --hidden-import "webview.platforms.cocoa" \
       --hidden-import "uvicorn.logging" \
@@ -59,24 +65,26 @@ case "${1:-mac}" in
       --hidden-import "uvicorn.protocols.http.auto" \
       --hidden-import "uvicorn.protocols.websockets.auto" \
       --collect-all "webview" \
-      --icon "assets/icon.icns" \
       desktop/main.py
     echo ""
-    echo "✅ 输出: dist/肥财.app"
-    echo "   (直接双击即可运行)"
+    echo "Output: dist/FeiCai.app"
     ;;
 
   win|windows)
-    echo "🪟 构建 Windows .exe..."
-    echo "   版本: v${VERSION}"
+    echo "Windows .exe..."
+    echo "  Version: v${VERSION}"
     echo ""
     pyinstaller \
       --onefile \
       --windowed \
       --name "FeiCai" \
       --add-data "VERSION;." \
-      --add-data "hermes-agent/hermes_cli/web_dist;web_dist" \
+      --add-data "web_dist;web_dist" \
+      --add-data "modules;modules" \
       --hidden-import "desktop.server" \
+      --hidden-import "desktop.logger" \
+      --hidden-import "desktop.loader" \
+      --hidden-import "desktop.downloader" \
       --hidden-import "desktop.update_checker" \
       --hidden-import "webview.platforms.win32" \
       --hidden-import "uvicorn.logging" \
@@ -84,22 +92,25 @@ case "${1:-mac}" in
       --hidden-import "uvicorn.protocols.http.auto" \
       --hidden-import "uvicorn.protocols.websockets.auto" \
       --collect-all "webview" \
-      --icon "assets/icon.ico" \
       desktop/main.py
     echo ""
-    echo "✅ 输出: dist/FeiCai.exe"
+    echo "Output: dist/FeiCai.exe"
     ;;
 
   linux)
-    echo "🐧 构建 Linux 可执行文件..."
-    echo "   版本: v${VERSION}"
+    echo "Linux executable..."
+    echo "  Version: v${VERSION}"
     echo ""
     pyinstaller \
       --onefile \
-      --name "feicai" \
+      --name "FeiCai" \
       --add-data "VERSION:." \
-      --add-data "hermes-agent/hermes_cli/web_dist:web_dist" \
+      --add-data "web_dist:web_dist" \
+      --add-data "modules:modules" \
       --hidden-import "desktop.server" \
+      --hidden-import "desktop.logger" \
+      --hidden-import "desktop.loader" \
+      --hidden-import "desktop.downloader" \
       --hidden-import "desktop.update_checker" \
       --hidden-import "webview.platforms.gtk" \
       --hidden-import "uvicorn.logging" \
@@ -109,22 +120,22 @@ case "${1:-mac}" in
       --collect-all "webview" \
       desktop/main.py
     echo ""
-    echo "✅ 输出: dist/feicai"
+    echo "Output: dist/FeiCai"
     ;;
 
   spec)
-    echo "📄 使用 spec 文件构建..."
+    echo "Using spec file..."
     pyinstaller feicai.spec
-    echo "✅ 输出: dist/ 目录"
+    echo "Output: dist/"
     ;;
 
   *)
-    echo "用法: $0 {mac|win|linux|spec}"
-    echo "  默认: mac"
+    echo "Usage: $0 {mac|win|linux|spec}"
+    echo "  Default: mac"
     exit 1
     ;;
 esac
 
 deactivate
 echo ""
-echo "🎉 构建完成！输出在 dist/ 目录"
+echo "Build complete! Output in dist/"
