@@ -11,6 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 # Hermes backend API base URL
 HERMES_API_BASE = os.environ.get("HERMES_API_URL", "http://127.0.0.1:8642")
@@ -22,6 +23,15 @@ WEB_DIST_DIR = HERMES_AGENT_DIR / "hermes_cli" / "web_dist"
 WEB_SRC_DIR = HERMES_AGENT_DIR / "web"
 
 app = FastAPI(title="肥财 FeiCai")
+
+# CORS — allow Vite dev server
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # HTTP client for proxying API requests
 client = httpx.AsyncClient(base_url=HERMES_API_BASE, timeout=30.0)
@@ -95,10 +105,61 @@ else:
 
 
 # ---------------------------------------------------------------------------
-# Hermes SOUL file API (custom endpoint for editing SOUL.md)
+# FeiCai 系统 API（不代理，本地处理）
 # ---------------------------------------------------------------------------
+
+# SOUL 文件路径
 SOUL_PATH = Path(os.environ.get("HERMES_SOUL_PATH", Path.home() / ".hermes" / "SOUL.md"))
 
+
+@app.get("/api/feicai/version")
+async def get_version():
+    """返回当前肥财版本"""
+    from desktop.update_checker import get_current_version
+    return JSONResponse(content={
+        "version": get_current_version(),
+        "name": "肥财 FeiCai",
+    })
+
+
+@app.get("/api/feicai/update-check")
+async def check_update():
+    """检查 GitHub 上的新版本"""
+    from desktop.update_checker import check_for_update
+    info = await check_for_update()
+    return JSONResponse(content={
+        "current_version": info.current_version,
+        "latest_version": info.latest_version,
+        "release_url": info.release_url,
+        "release_notes": info.release_notes,
+        "has_update": info.has_update,
+        "published_at": info.published_at,
+    })
+
+
+@app.get("/api/feicai/status")
+async def feicai_status():
+    """肥财工作台状态"""
+    from desktop.update_checker import get_current_version
+    return JSONResponse(content={
+        "version": get_current_version(),
+        "hermes_api": HERMES_API_BASE,
+        "hermes_connected": await _check_hermes_health(),
+    })
+
+
+async def _check_hermes_health() -> bool:
+    """检查 Hermes 后端是否可达"""
+    try:
+        r = await client.get("/api/health", timeout=3.0)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Hermes SOUL file API
+# ---------------------------------------------------------------------------
 
 @app.get("/api/soul")
 async def get_soul():
