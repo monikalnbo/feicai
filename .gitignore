@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+*.egg
+
+# Node
+node_modules/
+dist/
+.web_dist/
+
+# Hermes runtime
+hermes-agent/.git/
+hermes-agent/node_modules/
+hermes-agent/venv/
+hermes-agent/__pycache__/
+hermes-agent/*.pyc
+hermes-agent/.hermes-runtime/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Build
+build/
+dist/
+*.spec
