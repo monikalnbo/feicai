@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Save, RefreshCw, BookHeart } from "lucide-react";
 import { Button } from "@nous-research/ui/ui/components/button";
 import { Spinner } from "@nous-research/ui/ui/components/spinner";
-import { Card, CardContent, CardHeader, CardTitle } from "@nous-research/ui/ui/components/card";
+import { Card, CardContent } from "@nous-research/ui/ui/components/card";
 import { useToast } from "@nous-research/ui/hooks/use-toast";
 import { Toast } from "@nous-research/ui/ui/components/toast";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ export default function SoulEditorPage() {
       setContent(text);
       setOriginal(text);
     } catch (err) {
-      showToast({ title: "Error", description: "Failed to load SOUL.md", variant: "error" });
+      showToast("Failed to load SOUL.md", "error");
     } finally {
       setLoading(false);
     }
@@ -45,12 +45,12 @@ export default function SoulEditorPage() {
       });
       if (resp.ok) {
         setOriginal(content);
-        showToast({ title: "Saved", description: "SOUL.md updated successfully", variant: "success" });
+        showToast("SOUL.md updated successfully", "success");
       } else {
         throw new Error("Save failed");
       }
     } catch (err) {
-      showToast({ title: "Error", description: "Failed to save SOUL.md", variant: "error" });
+      showToast("Failed to save SOUL.md", "error");
     } finally {
       setSaving(false);
     }
@@ -68,7 +68,7 @@ export default function SoulEditorPage() {
             "text-xs font-sans transition-colors",
             hasChanges ? "text-warning" : "text-text-tertiary"
           )}>
-            {hasChanges ? "● Unsaved changes" : "Saved"}
+            {hasChanges ? "\u25cf Unsaved changes" : "Saved"}
           </span>
           <Button
             ghost

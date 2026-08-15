@@ -14,8 +14,8 @@ from typing import Optional
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 # 当前版本（从 VERSION 文件读取）
-def get_current_version() -> str:
-    version_file = ROOT_DIR / "VERSION"
+def get_current_version(base_dir: Path | None = None) -> str:
+    version_file = (base_dir or ROOT_DIR) / "VERSION"
     if version_file.exists():
         return version_file.read_text(encoding="utf-8").strip()
     return "0.0.0"

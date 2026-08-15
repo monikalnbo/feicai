@@ -5,8 +5,6 @@ import {
   Package,
   RefreshCw,
   AlertCircle,
-  CheckCircle2,
-  XCircle,
   Globe,
   Cpu,
 } from "lucide-react";
@@ -14,8 +12,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@nous-research/ui/ui/c
 import { Spinner } from "@nous-research/ui/ui/components/spinner";
 import { Badge } from "@nous-research/ui/ui/components/badge";
 import { Button } from "@nous-research/ui/ui/components/button";
-import { cn } from "@/lib/utils";
-
 /* ── Widget 类型 ── */
 interface WidgetDef {
   name: string;
@@ -41,10 +37,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 
 /* ── Widget 卡片组件 ── */
-function WidgetCard({ widget, onRefresh }: {
-  widget: WidgetDef;
-  onRefresh: (name: string) => void;
-}) {
+function WidgetCard({ widget: widget }: { widget: WidgetDef }) {
   const [data, setData] = useState<WidgetData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,12 +65,12 @@ function WidgetCard({ widget, onRefresh }: {
 
   const Icon = ICON_MAP[widget.icon] ?? Activity;
 
-  const statusColor =
+  const badgeTone =
     data?.status === "connected" || data?.status === "ok"
-      ? "text-success"
+      ? "success"
       : data?.status === "disconnected" || data?.status === "error"
-        ? "text-destructive"
-        : "text-warning";
+        ? "destructive"
+        : "warning";
 
   return (
     <Card className="flex flex-col">
@@ -101,7 +94,7 @@ function WidgetCard({ widget, onRefresh }: {
       <CardContent className="px-4 pb-4 pt-0 flex-1">
         {error ? (
           <div className="flex items-center gap-2 text-xs text-destructive">
-            <XCircle className="h-3.5 w-3.5" />
+            <AlertCircle className="h-3.5 w-3.5" />
             <span>{error}</span>
           </div>
         ) : loading && !data ? (
@@ -112,15 +105,8 @@ function WidgetCard({ widget, onRefresh }: {
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
               <Badge
-                variant="outline"
-                className={cn(
-                  "text-[0.65rem] px-1.5 py-0",
-                  data.status === "connected" || data.status === "ok"
-                    ? "border-success/30 text-success"
-                    : data.status === "disconnected" || data.status === "error"
-                      ? "border-destructive/30 text-destructive"
-                      : "border-warning/30 text-warning"
-                )}
+                tone={badgeTone}
+                className="text-[0.65rem] px-1.5 py-0"
               >
                 {data.status}
               </Badge>
@@ -169,10 +155,6 @@ export default function WorkspacePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleRefresh = (name: string) => {
-    // 每个 WidgetCard 自己管理刷新，这里留作全局刷新入口
-  };
-
   return (
     <div className="flex flex-col gap-4 min-h-0 flex-1">
       <div className="flex items-center justify-between">
@@ -195,7 +177,7 @@ export default function WorkspacePage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {widgets.map((w) => (
-            <WidgetCard key={w.name} widget={w} onRefresh={handleRefresh} />
+            <WidgetCard key={w.name} widget={w} />
           ))}
         </div>
       )}

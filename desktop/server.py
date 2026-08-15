@@ -16,11 +16,17 @@ from fastapi.middleware.cors import CORSMiddleware
 # Hermes backend API base URL
 HERMES_API_BASE = os.environ.get("HERMES_API_URL", "http://127.0.0.1:8642")
 
-# Paths
+# Paths — 同时支持开发模式和 PyInstaller 打包模式
 ROOT_DIR = Path(__file__).resolve().parent.parent
-HERMES_AGENT_DIR = ROOT_DIR / "hermes-agent"
-WEB_DIST_DIR = HERMES_AGENT_DIR / "hermes_cli" / "web_dist"
-WEB_SRC_DIR = HERMES_AGENT_DIR / "web"
+if hasattr(sys, '_MEIPASS'):
+    # PyInstaller 打包模式
+    BASE_DIR = Path(sys._MEIPASS)
+else:
+    BASE_DIR = ROOT_DIR
+
+HERMES_AGENT_DIR = BASE_DIR / "hermes-agent"
+WEB_DIST_DIR = BASE_DIR / "web_dist"  # PyInstaller 打包时 add-data 的路径
+WEB_SRC_DIR = BASE_DIR / "hermes-agent" / "web"
 
 app = FastAPI(title="肥财 FeiCai")
 
@@ -81,9 +87,11 @@ async def proxy_api(path: str, request: Request):
 def _find_index_html() -> Path | None:
     """Look for built index.html in various locations."""
     candidates = [
-        WEB_DIST_DIR / "index.html",
-        WEB_SRC_DIR / "dist" / "index.html",
-        ROOT_DIR / "web" / "dist" / "index.html",
+        WEB_DIST_DIR / "index.html",                         # PyInstaller add-data 的路径
+        BASE_DIR / "hermes-agent" / "hermes_cli" / "web_dist" / "index.html",  # Vite 默认输出
+        WEB_SRC_DIR / "dist" / "index.html",                 # 传统 dist
+        BASE_DIR / "web" / "dist" / "index.html",           # web/dist
+        Path.cwd() / "web_dist" / "index.html",              # 当前目录下的 web_dist
     ]
     for p in candidates:
         if p.exists():
@@ -117,7 +125,7 @@ async def get_version():
     """返回当前肥财版本"""
     from desktop.update_checker import get_current_version
     return JSONResponse(content={
-        "version": get_current_version(),
+        "version": get_current_version(BASE_DIR),
         "name": "肥财 FeiCai",
     })
 
@@ -142,7 +150,7 @@ async def feicai_status():
     """肥财工作台状态"""
     from desktop.update_checker import get_current_version
     return JSONResponse(content={
-        "version": get_current_version(),
+        "version": get_current_version(BASE_DIR),
         "hermes_api": HERMES_API_BASE,
         "hermes_connected": await _check_hermes_health(),
     })
@@ -271,7 +279,7 @@ def _widget_system_info():
 async def _widget_feicai_version():
     """版本与更新数据"""
     from desktop.update_checker import get_current_version, check_for_update
-    current = get_current_version()
+    current = get_current_version(BASE_DIR)
     update_info = await check_for_update()
     return JSONResponse(content={
         "status": "ok",
