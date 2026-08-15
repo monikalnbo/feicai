@@ -1,0 +1,148 @@
+name: Build FeiCai
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev
+      - name: Install Python deps
+        run: |
+          pip install -r requirements.txt pyinstaller
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller \
+            --onefile \
+            --name "FeiCai" \
+            --add-data "VERSION:." \
+            --add-data "web_dist:web_dist" \
+            --add-data "modules:modules" \
+            --hidden-import "desktop.server" \
+            --hidden-import "desktop.logger" \
+            --hidden-import "desktop.loader" \
+            --hidden-import "desktop.downloader" \
+            --hidden-import "desktop.update_checker" \
+            --hidden-import "webview.platforms.gtk" \
+            --hidden-import "uvicorn.logging" \
+            --hidden-import "uvicorn.loops.auto" \
+            --hidden-import "uvicorn.protocols.http.auto" \
+            --hidden-import "uvicorn.protocols.websockets.auto" \
+            --collect-all "webview" \
+            desktop/main.py
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FeiCai-linux
+          path: dist/FeiCai
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Python deps
+        run: |
+          pip install -r requirements.txt pyinstaller
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller \
+            --onefile \
+            --windowed \
+            --name "FeiCai" \
+            --add-data "VERSION:." \
+            --add-data "web_dist:web_dist" \
+            --add-data "modules:modules" \
+            --hidden-import "desktop.server" \
+            --hidden-import "desktop.logger" \
+            --hidden-import "desktop.loader" \
+            --hidden-import "desktop.downloader" \
+            --hidden-import "desktop.update_checker" \
+            --hidden-import "webview.platforms.cocoa" \
+            --hidden-import "uvicorn.logging" \
+            --hidden-import "uvicorn.loops.auto" \
+            --hidden-import "uvicorn.protocols.http.auto" \
+            --hidden-import "uvicorn.protocols.websockets.auto" \
+            --collect-all "webview" \
+            desktop/main.py
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FeiCai-mac
+          path: dist/FeiCai
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Python deps
+        run: |
+          pip install -r requirements.txt pyinstaller
+      - name: Build with PyInstaller
+        shell: pwsh
+        run: |
+          pyinstaller `
+            --onefile `
+            --windowed `
+            --name "FeiCai" `
+            --add-data "VERSION;." `
+            --add-data "web_dist;web_dist" `
+            --add-data "modules;modules" `
+            --hidden-import desktop.server `
+            --hidden-import desktop.logger `
+            --hidden-import desktop.loader `
+            --hidden-import desktop.downloader `
+            --hidden-import desktop.update_checker `
+            --hidden-import webview.platforms.win32 `
+            --hidden-import uvicorn.logging `
+            --hidden-import uvicorn.loops.auto `
+            --hidden-import uvicorn.protocols.http.auto `
+            --hidden-import uvicorn.protocols.websockets.auto `
+            --collect-all webview `
+            desktop/main.py
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FeiCai-win
+          path: dist/FeiCai.exe
+
+  release:
+    needs: [build-linux, build-mac, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: FeiCai-linux
+          path: release/linux/
+      - uses: actions/download-artifact@v4
+        with:
+          name: FeiCai-mac
+          path: release/mac/
+      - uses: actions/download-artifact@v4
+        with:
+          name: FeiCai-win
+          path: release/win/
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/linux/FeiCai
+            release/mac/FeiCai
+            release/win/FeiCai.exe
+          generate_release_notes: true
