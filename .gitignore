@@ -1,33 +1,40 @@
-# Python
-__pycache__/
-*.py[cod]
+# Build output
+dist/
+build/
+*.spec
+*.egg
 *.egg-info/
+
+# Runtime data (auto-downloaded Hermes, databases, configs)
+data/
+hermes-agent/
+
+# Web frontend (build from source, or kept as web_dist/)
+hermes-agent/web/node_modules/
+hermes-agent/web/.env
+hermes-agent/web/.env.local
+
+# Python
 venv/
 .venv/
-*.egg
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv/
 
 # Node
 node_modules/
-dist/
-.web_dist/
-
-# Hermes runtime
-hermes-agent/.git/
-hermes-agent/node_modules/
-hermes-agent/venv/
-hermes-agent/__pycache__/
-hermes-agent/*.pyc
-hermes-agent/.hermes-runtime/
 
 # OS
 .DS_Store
 Thumbs.db
 
 # IDE
-.vscode/
 .idea/
+.vscode/
+*.swp
+*.swo
 
-# Build
-build/
-dist/
-*.spec
+# Logs
+*.log

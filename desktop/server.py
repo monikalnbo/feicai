@@ -1,36 +1,28 @@
-"""
-肥财 - Hermes Agent Desktop Shell
-FastAPI backend: proxies API requests and serves WebUI static files.
-"""
+"""FeiCai backend server. Proxies API, serves web UI, provides custom endpoints."""
 
 import os
 import sys
-import json
 import httpx
 from pathlib import Path
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-# Hermes backend API base URL
-HERMES_API_BASE = os.environ.get("HERMES_API_URL", "http://127.0.0.1:8642")
+from desktop.logger import logger, try_with_log
 
-# Paths — 同时支持开发模式和 PyInstaller 打包模式
-ROOT_DIR = Path(__file__).resolve().parent.parent
-if hasattr(sys, '_MEIPASS'):
-    # PyInstaller 打包模式
-    BASE_DIR = Path(sys._MEIPASS)
-else:
-    BASE_DIR = ROOT_DIR
+ROOT = Path(__file__).resolve().parent.parent
+BASE = Path(sys._MEIPASS) if hasattr(sys, '_MEIPASS') else ROOT
 
-HERMES_AGENT_DIR = BASE_DIR / "hermes-agent"
-WEB_DIST_DIR = BASE_DIR / "web_dist"  # PyInstaller 打包时 add-data 的路径
-WEB_SRC_DIR = BASE_DIR / "hermes-agent" / "web"
+DATA_DIR = ROOT / "data"
+HERMES_HOME = DATA_DIR / "hermes"
+WEB_DIST = BASE / "web_dist"
 
-app = FastAPI(title="肥财 FeiCai")
+HERMES_API = os.environ.get("HERMES_API_URL", "http://127.0.0.1:8642")
 
-# CORS — allow Vite dev server
+app = FastAPI(title="FeiCai")
+
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -39,8 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# HTTP client for proxying API requests
-client = httpx.AsyncClient(base_url=HERMES_API_BASE, timeout=30.0)
+client = httpx.AsyncClient(base_url=HERMES_API, timeout=30.0)
 
 
 @app.on_event("shutdown")
@@ -49,17 +40,44 @@ async def shutdown():
 
 
 # ---------------------------------------------------------------------------
-# API Proxy — forwards /api/* requests to the Hermes backend
+# Download progress (for loading page)
 # ---------------------------------------------------------------------------
-@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
-async def proxy_api(path: str, request: Request):
-    """Proxy API requests to the running Hermes agent backend."""
+@app.get("/api/feicai/download-progress")
+async def download_progress():
+    from desktop.loader import get_progress
+    return JSONResponse(content=get_progress())
+
+
+# ---------------------------------------------------------------------------
+# Loading page (shown while Hermes is being downloaded)
+# ---------------------------------------------------------------------------
+@app.get("/loading")
+async def loading_page():
+    from desktop.loader import LOADING_HTML
+    return HTMLResponse(content=LOADING_HTML)
+
+
+# ---------------------------------------------------------------------------
+# Serve web frontend (if built)
+# ---------------------------------------------------------------------------
+index = WEB_DIST / "index.html"
+if index.exists():
+    app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="webui")
+else:
+    @app.get("/")
+    async def dev_mode():
+        return JSONResponse({"status": "dev", "message": "FeiCai dev mode — run 'npm run dev' in web/"})
+
+
+# ---------------------------------------------------------------------------
+# API proxy: /api/* -> Hermes backend
+# ---------------------------------------------------------------------------
+@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy(path: str, request: Request):
     try:
         body = await request.body()
-        headers = {
-            k: v for k, v in request.headers.items()
-            if k.lower() not in ("host", "content-length")
-        }
+        headers = {k: v for k, v in request.headers.items()
+                   if k.lower() not in ("host", "content-length", "transfer-encoding")}
 
         resp = await client.request(
             method=request.method,
@@ -69,268 +87,172 @@ async def proxy_api(path: str, request: Request):
             params=dict(request.query_params),
         )
 
-        return JSONResponse(
-            content=resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text,
-            status_code=resp.status_code,
-            headers=dict(resp.headers),
-        )
+        ct = resp.headers.get("content-type", "")
+        if "application/json" in ct:
+            return JSONResponse(content=resp.json(), status_code=resp.status_code,
+                                headers=dict(resp.headers))
+        return JSONResponse(content={"text": resp.text}, status_code=resp.status_code,
+                            headers=dict(resp.headers))
     except Exception as e:
-        return JSONResponse(
-            content={"error": f"Proxy error: {str(e)}"},
-            status_code=502,
-        )
+        logger.error(f"Proxy /api/{path}: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=502)
 
 
 # ---------------------------------------------------------------------------
-# Serve built WebUI (production mode)
+# Version
 # ---------------------------------------------------------------------------
-def _find_index_html() -> Path | None:
-    """Look for built index.html in various locations."""
-    candidates = [
-        WEB_DIST_DIR / "index.html",                         # PyInstaller add-data 的路径
-        BASE_DIR / "hermes-agent" / "hermes_cli" / "web_dist" / "index.html",  # Vite 默认输出
-        WEB_SRC_DIR / "dist" / "index.html",                 # 传统 dist
-        BASE_DIR / "web" / "dist" / "index.html",           # web/dist
-        Path.cwd() / "web_dist" / "index.html",              # 当前目录下的 web_dist
-    ]
-    for p in candidates:
-        if p.exists():
-            return p
-    return None
-
-
-if _find_index_html():
-    dist_dir = _find_index_html().parent
-    app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="webui")
-else:
-    # Fallback: redirect to Vite dev server
-    @app.get("/")
-    async def dev_redirect():
-        return JSONResponse({
-            "message": "肥财 FeiCai - Development mode",
-            "info": "Run 'cd hermes-agent/web && npm run dev' for the live UI, then load http://localhost:5173 in the desktop app.",
-        })
-
-
-# ---------------------------------------------------------------------------
-# FeiCai 系统 API（不代理，本地处理）
-# ---------------------------------------------------------------------------
-
-# SOUL 文件路径
-SOUL_PATH = Path(os.environ.get("HERMES_SOUL_PATH", Path.home() / ".hermes" / "SOUL.md"))
-
-
 @app.get("/api/feicai/version")
 async def get_version():
-    """返回当前肥财版本"""
-    from desktop.update_checker import get_current_version
-    return JSONResponse(content={
-        "version": get_current_version(BASE_DIR),
-        "name": "肥财 FeiCai",
-    })
+    v = try_with_log(lambda: (ROOT / "VERSION").read_text().strip(), fallback="0.0.0", msg="Read version")
+    return JSONResponse(content={"version": v})
 
 
-@app.get("/api/feicai/update-check")
-async def check_update():
-    """检查 GitHub 上的新版本"""
-    from desktop.update_checker import check_for_update
-    info = await check_for_update()
-    return JSONResponse(content={
-        "current_version": info.current_version,
-        "latest_version": info.latest_version,
-        "release_url": info.release_url,
-        "release_notes": info.release_notes,
-        "has_update": info.has_update,
-        "published_at": info.published_at,
-    })
-
-
+# ---------------------------------------------------------------------------
+# Status
+# ---------------------------------------------------------------------------
 @app.get("/api/feicai/status")
-async def feicai_status():
-    """肥财工作台状态"""
-    from desktop.update_checker import get_current_version
+async def get_status():
+    connected = False
+    try:
+        r = await client.get("/api/health", timeout=2.0)
+        connected = r.status_code == 200
+    except Exception as e:
+        logger.debug(f"Hermes health check: {e}")
+
+    v = try_with_log(lambda: (ROOT / "VERSION").read_text().strip(), fallback="?")
     return JSONResponse(content={
-        "version": get_current_version(BASE_DIR),
-        "hermes_api": HERMES_API_BASE,
-        "hermes_connected": await _check_hermes_health(),
+        "version": v,
+        "hermes_connected": connected,
+        "data_dir": str(HERMES_HOME),
     })
 
 
-async def _check_hermes_health() -> bool:
-    """检查 Hermes 后端是否可达"""
+# ---------------------------------------------------------------------------
+# SOUL.md editor
+# ---------------------------------------------------------------------------
+SOUL_PATH = HERMES_HOME / "SOUL.md"
+
+
+@app.get("/api/soul")
+async def get_soul():
+    if SOUL_PATH.exists():
+        try:
+            content = SOUL_PATH.read_text("utf-8")
+            return JSONResponse(content={"content": content})
+        except Exception as e:
+            logger.error(f"Read SOUL.md: {e}")
+            return JSONResponse(content={"error": str(e)}, status_code=500)
+    return JSONResponse(content={"content": "", "note": "SOUL.md not found"}, status_code=404)
+
+
+@app.put("/api/soul")
+async def save_soul(request: Request):
     try:
-        r = await client.get("/api/health", timeout=3.0)
-        return r.status_code == 200
-    except Exception:
-        return False
+        data = await request.json()
+        SOUL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        SOUL_PATH.write_text(data.get("content", ""), "utf-8")
+        logger.info("SOUL.md saved")
+        return JSONResponse(content={"message": "saved"})
+    except Exception as e:
+        logger.error(f"Save SOUL.md: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
 # ---------------------------------------------------------------------------
-# 可拓展 Widget 系统 — 工作台仪表盘
+# Widget system (dashboard cards, extensible)
 # ---------------------------------------------------------------------------
-
-# Widget 注册表：name -> 配置
-WIDGET_REGISTRY: dict[str, dict] = {}
+WIDGETS = {}
 
 
-def register_widget(name: str, label: str, description: str, icon: str,
-                    api_url: str = "", refresh_interval: int = 30):
-    """注册一个 widget 到工作台"""
-    WIDGET_REGISTRY[name] = {
-        "name": name,
-        "label": label,
-        "description": description,
-        "icon": icon,
-        "api_url": api_url,
-        "refresh_interval": refresh_interval,
+def register_widget(name, label, desc, icon="activity", interval=30, handler=None, api_url=""):
+    WIDGETS[name] = {
+        "name": name, "label": label, "description": desc, "icon": icon,
+        "refresh_interval": interval, "api_url": api_url,
+        "__handler": handler,
     }
 
 
-# ── 内置 Widget ──
-
-register_widget(
-    name="hermes-status",
-    label="Hermes 状态",
-    description="Hermes Agent 后端连接状态",
-    icon="activity",
-    refresh_interval=15,
-)
-
-register_widget(
-    name="system-info",
-    label="系统信息",
-    description="本地系统基本信息",
-    icon="monitor",
-    refresh_interval=60,
-)
-
-register_widget(
-    name="feicai-version",
-    label="肥财版本",
-    description="当前版本与更新状态",
-    icon="package",
-    refresh_interval=3600,
-)
+# Built-in widgets
+register_widget("hermes-status", "Hermes Status", "Backend connection", "activity", 15)
+register_widget("system-info", "System Info", "Local system", "monitor", 60)
+register_widget("feicai-version", "FeiCai Version", "Version & updates", "package", 3600)
 
 
 @app.get("/api/feicai/widgets")
 async def list_widgets():
-    """返回所有可用 widget 列表"""
-    return JSONResponse(content={
-        "widgets": list(WIDGET_REGISTRY.values()),
-    })
+    items = [{k: v for k, v in w.items() if not k.startswith("__")} for w in WIDGETS.values()]
+    return JSONResponse(content={"widgets": items})
 
 
-@app.get("/api/feicai/widgets/{widget_name}/data")
-async def get_widget_data(widget_name: str):
-    """获取指定 widget 的实时数据"""
-    if widget_name not in WIDGET_REGISTRY:
-        return JSONResponse(content={"error": f"Widget '{widget_name}' not found"}, status_code=404)
+@app.get("/api/feicai/widgets/{name}/data")
+async def widget_data(name: str):
+    w = WIDGETS.get(name)
+    if not w:
+        return JSONResponse(content={"error": f"widget '{name}' not found"}, status_code=404)
 
-    widget = WIDGET_REGISTRY[widget_name]
-
-    if widget_name == "hermes-status":
-        return await _widget_hermes_status()
-    elif widget_name == "system-info":
-        return _widget_system_info()
-    elif widget_name == "feicai-version":
-        return await _widget_feicai_version()
-    else:
-        # 自定义外部 API widget
-        if widget.get("api_url"):
-            return await _widget_external_api(widget["api_url"])
-        return JSONResponse(content={"status": "unknown", "message": "No data source configured"})
-
-
-async def _widget_hermes_status():
-    """Hermes 状态数据"""
-    connected = await _check_hermes_health()
-    info = {}
-    if connected:
+    # Custom handler
+    if w["__handler"]:
         try:
-            r = await client.get("/api/status", timeout=3.0)
-            if r.status_code == 200:
-                info = r.json()
-        except Exception:
-            pass
-    return JSONResponse(content={
-        "status": "connected" if connected else "disconnected",
-        "label": "Hermes Agent",
-        "connected": connected,
-        "details": info,
-    })
+            return JSONResponse(content=await w["__handler"]())
+        except Exception as e:
+            logger.error(f"Widget {name}: {e}")
+            return JSONResponse(content={"status": "error", "error": str(e)})
+
+    # External API widget
+    if w["api_url"]:
+        return await _fetch_external(w["api_url"])
+
+    # Default handlers
+    if name == "hermes-status":
+        return await _hermes_status()
+    if name == "system-info":
+        return _system_info()
+    if name == "feicai-version":
+        return await _feicai_version()
+
+    return JSONResponse(content={"status": "unknown"})
 
 
-def _widget_system_info():
-    """系统信息数据"""
-    import platform
-    return JSONResponse(content={
-        "status": "ok",
-        "label": "系统信息",
-        "data": {
-            "platform": platform.system(),
-            "release": platform.release(),
-            "python": platform.python_version(),
-            "hostname": platform.node(),
-        }
-    })
-
-
-async def _widget_feicai_version():
-    """版本与更新数据"""
-    from desktop.update_checker import get_current_version, check_for_update
-    current = get_current_version(BASE_DIR)
-    update_info = await check_for_update()
-    return JSONResponse(content={
-        "status": "ok",
-        "label": "肥财版本",
-        "data": {
-            "current_version": current,
-            "latest_version": update_info.latest_version,
-            "has_update": update_info.has_update,
-            "release_url": update_info.release_url,
-        }
-    })
-
-
-async def _widget_external_api(api_url: str):
-    """调用外部 API 获取数据"""
+async def _hermes_status():
+    ok = False
     try:
-        async with httpx.AsyncClient(timeout=10.0) as ext_client:
-            resp = await ext_client.get(api_url)
-            data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"text": resp.text}
-        return JSONResponse(content={
-            "status": "ok",
-            "label": "外部 API",
-            "source": api_url,
-            "data": data,
-        })
+        r = await client.get("/api/health", timeout=2.0)
+        ok = r.status_code == 200
+    except:
+        pass
+    return {"status": "ok" if ok else "disconnected", "connected": ok}
+
+
+def _system_info():
+    import platform
+    return {"status": "ok", "data": {
+        "platform": f"{platform.system()} {platform.release()}",
+        "python": platform.python_version(),
+        "hostname": platform.node(),
+    }}
+
+
+async def _feicai_version():
+    from .update_checker import check_for_update
+    try:
+        info = await check_for_update()
+        return {"status": "ok", "data": {
+            "current": info.current_version,
+            "latest": info.latest_version,
+            "has_update": info.has_update,
+            "release_url": info.release_url,
+        }}
     except Exception as e:
-        return JSONResponse(content={
-            "status": "error",
-            "label": "外部 API",
-            "source": api_url,
-            "error": str(e),
-        })
+        logger.error(f"Version check: {e}")
+        return {"status": "ok", "data": {"current": "?", "has_update": False}}
 
 
-# ---------------------------------------------------------------------------
-# Hermes SOUL file API
-# ---------------------------------------------------------------------------
-
-@app.get("/api/soul")
-async def get_soul():
-    """Read the Hermes SOUL.md file."""
-    if SOUL_PATH.exists():
-        return JSONResponse(content={"content": SOUL_PATH.read_text(encoding="utf-8")})
-    return JSONResponse(content={"content": "", "error": "SOUL.md not found"}, status_code=404)
-
-
-@app.put("/api/soul")
-async def update_soul(request: Request):
-    """Write to the Hermes SOUL.md file."""
-    data = await request.json()
-    content = data.get("content", "")
-    SOUL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SOUL_PATH.write_text(content, encoding="utf-8")
-    return JSONResponse(content={"message": "SOUL.md updated", "path": str(SOUL_PATH)})
+async def _fetch_external(url: str):
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            resp = await c.get(url)
+            data = resp.json() if "application/json" in resp.headers.get("content-type", "") else {"body": resp.text}
+        return {"status": "ok", "source": url, "data": data}
+    except Exception as e:
+        logger.error(f"External API {url}: {e}")
+        return {"status": "error", "error": str(e)}
