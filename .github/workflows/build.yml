@@ -140,11 +140,14 @@ jobs:
         with:
           name: FeiCai-win
           path: release/win/
+      - name: Rename for release
+        run: |
+          mkdir -p upload
+          cp release/linux/FeiCai upload/FeiCai-linux
+          cp release/mac/FeiCai upload/FeiCai-mac
+          cp release/win/FeiCai.exe upload/FeiCai-win.exe
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release/linux/FeiCai
-            release/mac/FeiCai
-            release/win/FeiCai.exe
+          files: upload/*
           generate_release_notes: true
