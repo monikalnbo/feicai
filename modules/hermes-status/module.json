@@ -1,0 +1,8 @@
+{
+  "name": "hermes-status",
+  "label": "Hermes 状态",
+  "description": "Hermes Agent 后端连接状态与信息",
+  "version": "0.1.0",
+  "author": "FeiCai",
+  "icon": "activity"
+}

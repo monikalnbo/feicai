@@ -1,0 +1,8 @@
+{
+  "name": "system-info",
+  "label": "系统信息",
+  "description": "本地系统基本信息",
+  "version": "0.1.0",
+  "author": "FeiCai",
+  "icon": "monitor"
+}

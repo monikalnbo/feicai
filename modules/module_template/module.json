@@ -1,0 +1,8 @@
+{
+  "name": "my-module",
+  "label": "我的模块",
+  "description": "在这里写你的模块描述",
+  "version": "0.1.0",
+  "author": "你的名字",
+  "icon": "globe"
+}
