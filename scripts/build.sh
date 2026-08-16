@@ -48,7 +48,7 @@ case "${1:-mac}" in
     echo "  Version: v${VERSION}"
     echo ""
     pyinstaller \
-      --onefile \
+      --onedir \
       --windowed \
       --name "FeiCai" \
       --add-data "VERSION:." \
@@ -57,7 +57,6 @@ case "${1:-mac}" in
       --hidden-import "desktop.server" \
       --hidden-import "desktop.logger" \
       --hidden-import "desktop.loader" \
-      --hidden-import "desktop.downloader" \
       --hidden-import "desktop.update_checker" \
       --hidden-import "webview.platforms.cocoa" \
       --hidden-import "uvicorn.logging" \
@@ -67,7 +66,8 @@ case "${1:-mac}" in
       --collect-all "webview" \
       desktop/main.py
     echo ""
-    echo "Output: dist/FeiCai.app"
+    echo "Output: dist/FeiCai.app/"
+    echo "Package: cd dist && zip -r FeiCai-mac.zip FeiCai.app/"
     ;;
 
   win|windows)
@@ -75,7 +75,7 @@ case "${1:-mac}" in
     echo "  Version: v${VERSION}"
     echo ""
     pyinstaller \
-      --onefile \
+      --onedir \
       --windowed \
       --name "FeiCai" \
       --add-data "VERSION;." \
@@ -84,7 +84,6 @@ case "${1:-mac}" in
       --hidden-import "desktop.server" \
       --hidden-import "desktop.logger" \
       --hidden-import "desktop.loader" \
-      --hidden-import "desktop.downloader" \
       --hidden-import "desktop.update_checker" \
       --hidden-import "webview.platforms.win32" \
       --hidden-import "uvicorn.logging" \
@@ -94,7 +93,8 @@ case "${1:-mac}" in
       --collect-all "webview" \
       desktop/main.py
     echo ""
-    echo "Output: dist/FeiCai.exe"
+    echo "Output: dist/FeiCai/"
+    echo "Package: cd dist && Compress-Archive -Path FeiCai\* -DestinationPath FeiCai-win.zip"
     ;;
 
   linux)
@@ -102,7 +102,7 @@ case "${1:-mac}" in
     echo "  Version: v${VERSION}"
     echo ""
     pyinstaller \
-      --onefile \
+      --onedir \
       --name "FeiCai" \
       --add-data "VERSION:." \
       --add-data "web_dist:web_dist" \
@@ -110,7 +110,6 @@ case "${1:-mac}" in
       --hidden-import "desktop.server" \
       --hidden-import "desktop.logger" \
       --hidden-import "desktop.loader" \
-      --hidden-import "desktop.downloader" \
       --hidden-import "desktop.update_checker" \
       --hidden-import "webview.platforms.gtk" \
       --hidden-import "uvicorn.logging" \
@@ -120,7 +119,8 @@ case "${1:-mac}" in
       --collect-all "webview" \
       desktop/main.py
     echo ""
-    echo "Output: dist/FeiCai"
+    echo "Output: dist/FeiCai/"
+    echo "Package: cd dist && zip -r FeiCai-linux.zip FeiCai/"
     ;;
 
   spec)
