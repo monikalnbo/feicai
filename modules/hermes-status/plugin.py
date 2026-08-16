@@ -1,6 +1,9 @@
 """Hermes 状态模块"""
 
+import os
 import httpx
+
+HERMES_API = os.environ.get("HERMES_API_URL", "http://127.0.0.1:8642")
 
 
 def init():
@@ -17,10 +20,9 @@ def init():
 
 async def get_hermes_status():
     """获取 Hermes 后端状态"""
-    hermes_api = "http://127.0.0.1:8642"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{hermes_api}/api/status")
+            resp = await client.get(f"{HERMES_API}/api/status")
             if resp.status_code == 200:
                 data = resp.json()
                 return {

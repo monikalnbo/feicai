@@ -5,7 +5,7 @@ import sys
 import httpx
 from pathlib import Path
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -22,10 +22,15 @@ HERMES_API = os.environ.get("HERMES_API_URL", "http://127.0.0.1:8642")
 
 app = FastAPI(title="FeiCai")
 
-# CORS
+# CORS — allow both dev server and production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_origins=[
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        f"http://127.0.0.1:{os.environ.get('FEICAI_PORT', '8765')}",
+        "http://localhost:8765",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,6 +76,7 @@ else:
 
 # ---------------------------------------------------------------------------
 # API proxy: /api/* -> Hermes backend
+# Use StreamingResponse to preserve original content type and body
 # ---------------------------------------------------------------------------
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def proxy(path: str, request: Request):
@@ -87,12 +93,24 @@ async def proxy(path: str, request: Request):
             params=dict(request.query_params),
         )
 
-        ct = resp.headers.get("content-type", "")
-        if "application/json" in ct:
-            return JSONResponse(content=resp.json(), status_code=resp.status_code,
-                                headers=dict(resp.headers))
-        return JSONResponse(content={"text": resp.text}, status_code=resp.status_code,
-                            headers=dict(resp.headers))
+        # Stream back with original content type — preserves JSON, binary, SSE, etc.
+        content = resp.content
+        media_type = resp.headers.get("content-type", "application/json")
+        resp_headers = {k: v for k, v in resp.headers.items()
+                        if k.lower() not in ("content-length", "content-encoding", "transfer-encoding")}
+
+        return StreamingResponse(
+            content=iter([content]),
+            status_code=resp.status_code,
+            media_type=media_type,
+            headers=resp_headers,
+        )
+    except httpx.ConnectError:
+        logger.warning(f"Hermes backend not reachable (path=/api/{path})")
+        return JSONResponse(
+            content={"error": "Hermes backend not running", "detail": "Start Hermes first or check port 8642"},
+            status_code=502,
+        )
     except Exception as e:
         logger.error(f"Proxy /api/{path}: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=502)
@@ -159,7 +177,7 @@ async def save_soul(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Widget system (dashboard cards, extensible)
+# Widget system — merges built-in widgets + module widgets
 # ---------------------------------------------------------------------------
 WIDGETS = {}
 
@@ -177,6 +195,31 @@ register_widget("hermes-status", "Hermes Status", "Backend connection", "activit
 register_widget("system-info", "System Info", "Local system", "monitor", 60)
 register_widget("feicai-version", "FeiCai Version", "Version & updates", "package", 3600)
 
+# Initialize module system — discovers and loads module widgets
+# Use importlib to avoid PyInstaller frozen-module issues
+try:
+    import importlib.util
+    mod_init = Path(__file__).resolve().parent.parent / "modules" / "__init__.py"
+    if mod_init.exists():
+        spec = importlib.util.spec_from_file_location("feicai_modules", str(mod_init))
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["feicai_modules"] = mod
+        spec.loader.exec_module(mod)
+        mod.discover_modules()
+        for mw in mod.get_widgets():
+            handler = mod.get_widget_handler(mw["name"])
+            register_widget(
+                name=mw["name"],
+                label=mw["label"],
+                desc=mw["description"],
+                icon=mw["icon"],
+                interval=mw["refresh_interval"],
+                api_url=mw.get("api_url", ""),
+                handler=handler,
+            )
+except Exception as e:
+    logger.warning(f"Module system init: {e}")
+
 
 @app.get("/api/feicai/widgets")
 async def list_widgets():
@@ -190,19 +233,21 @@ async def widget_data(name: str):
     if not w:
         return JSONResponse(content={"error": f"widget '{name}' not found"}, status_code=404)
 
-    # Custom handler
     if w["__handler"]:
         try:
-            return JSONResponse(content=await w["__handler"]())
+            result = w["__handler"]()
+            # If handler is async (coroutine), await it
+            if hasattr(result, "__await__"):
+                result = await result
+            return JSONResponse(content=result)
         except Exception as e:
             logger.error(f"Widget {name}: {e}")
             return JSONResponse(content={"status": "error", "error": str(e)})
 
-    # External API widget
     if w["api_url"]:
         return await _fetch_external(w["api_url"])
 
-    # Default handlers
+    # Fallback default handlers (legacy)
     if name == "hermes-status":
         return await _hermes_status()
     if name == "system-info":
@@ -233,7 +278,7 @@ def _system_info():
 
 
 async def _feicai_version():
-    from .update_checker import check_for_update
+    from desktop.update_checker import check_for_update
     try:
         info = await check_for_update()
         return {"status": "ok", "data": {

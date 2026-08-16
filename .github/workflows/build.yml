@@ -31,7 +31,6 @@ jobs:
             --hidden-import "desktop.server" \
             --hidden-import "desktop.logger" \
             --hidden-import "desktop.loader" \
-            --hidden-import "desktop.downloader" \
             --hidden-import "desktop.update_checker" \
             --hidden-import "webview.platforms.gtk" \
             --hidden-import "uvicorn.logging" \
@@ -68,7 +67,6 @@ jobs:
             --hidden-import "desktop.server" \
             --hidden-import "desktop.logger" \
             --hidden-import "desktop.loader" \
-            --hidden-import "desktop.downloader" \
             --hidden-import "desktop.update_checker" \
             --hidden-import "webview.platforms.cocoa" \
             --hidden-import "uvicorn.logging" \
@@ -91,6 +89,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install Python deps
+        shell: pwsh
         run: |
           pip install -r requirements.txt pyinstaller
       - name: Build with PyInstaller
@@ -106,7 +105,6 @@ jobs:
             --hidden-import desktop.server `
             --hidden-import desktop.logger `
             --hidden-import desktop.loader `
-            --hidden-import desktop.downloader `
             --hidden-import desktop.update_checker `
             --hidden-import webview.platforms.win32 `
             --hidden-import uvicorn.logging `
