@@ -55,12 +55,11 @@ jobs:
       - name: Install Python deps
         run: |
           pip install -r requirements.txt pyinstaller
-      - name: Build universal binary with PyInstaller
+      - name: Build with PyInstaller
         run: |
           pyinstaller \
             --onefile \
             --windowed \
-            --target-arch universal2 \
             --name "FeiCai" \
             --add-data "VERSION:." \
             --add-data "web_dist:web_dist" \
@@ -76,8 +75,6 @@ jobs:
             --hidden-import "uvicorn.protocols.websockets.auto" \
             --collect-all "webview" \
             desktop/main.py
-      - name: Verify universal binary
-        run: lipo -info dist/FeiCai
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
