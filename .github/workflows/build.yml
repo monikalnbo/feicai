@@ -45,7 +45,7 @@ jobs:
           name: FeiCai-linux
           path: dist/FeiCai
 
-  build-mac:
+  build-mac-arm:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,11 +55,12 @@ jobs:
       - name: Install Python deps
         run: |
           pip install -r requirements.txt pyinstaller
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (ARM64)
         run: |
           pyinstaller \
             --onefile \
             --windowed \
+            --target-arch arm64 \
             --name "FeiCai" \
             --add-data "VERSION:." \
             --add-data "web_dist:web_dist" \
@@ -75,11 +76,70 @@ jobs:
             --hidden-import "uvicorn.protocols.websockets.auto" \
             --collect-all "webview" \
             desktop/main.py
-      - name: Upload artifact
+      - name: Upload ARM64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FeiCai-mac-arm64
+          path: dist/FeiCai
+
+  build-mac-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Python deps
+        run: |
+          pip install -r requirements.txt pyinstaller
+      - name: Build with PyInstaller (x86_64)
+        run: |
+          pyinstaller \
+            --onefile \
+            --windowed \
+            --target-arch x86_64 \
+            --name "FeiCai" \
+            --add-data "VERSION:." \
+            --add-data "web_dist:web_dist" \
+            --add-data "modules:modules" \
+            --hidden-import "desktop.server" \
+            --hidden-import "desktop.logger" \
+            --hidden-import "desktop.loader" \
+            --hidden-import "desktop.update_checker" \
+            --hidden-import "webview.platforms.cocoa" \
+            --hidden-import "uvicorn.logging" \
+            --hidden-import "uvicorn.loops.auto" \
+            --hidden-import "uvicorn.protocols.http.auto" \
+            --hidden-import "uvicorn.protocols.websockets.auto" \
+            --collect-all "webview" \
+            desktop/main.py
+      - name: Upload Intel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FeiCai-mac-intel
+          path: dist/FeiCai
+
+  merge-mac-universal:
+    needs: [build-mac-arm, build-mac-intel]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: FeiCai-mac-arm64
+          path: build/
+      - uses: actions/download-artifact@v4
+        with:
+          name: FeiCai-mac-intel
+          path: build/
+      - name: Create universal binary with lipo
+        run: |
+          lipo -create -output FeiCai build/FeiCai build/FeiCai
+          lipo -info FeiCai
+      - name: Upload universal binary
         uses: actions/upload-artifact@v4
         with:
           name: FeiCai-mac
-          path: dist/FeiCai
+          path: FeiCai
 
   build-windows:
     runs-on: windows-latest
@@ -120,7 +180,7 @@ jobs:
           path: dist/FeiCai.exe
 
   release:
-    needs: [build-linux, build-mac, build-windows]
+    needs: [build-linux, merge-mac-universal, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
